@@ -1,0 +1,35 @@
+# Web server / webhook receiver
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# GitHub API
+PyGithub==2.4.0
+requests==2.32.3
+
+# LLM + LangChain
+langchain==0.3.7
+langchain-core==0.3.19
+langchain-community==0.3.5
+langchain-mistralai==0.2.0
+mistralai==1.2.5
+
+# RAG - embeddings + vector store
+chromadb==0.5.18
+
+# Code parsing (AST-based chunking)
+tree-sitter==0.23.1
+tree-sitter-python==0.23.4
+# Later add:
+# tree-sitter-javascript
+# tree-sitter-typescript
+# tree-sitter-java
+# tree-sitter-go
+
+# Structured output validation
+pydantic==2.9.2 #left
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Optional but useful for development
+python-multipart==0.0.12
