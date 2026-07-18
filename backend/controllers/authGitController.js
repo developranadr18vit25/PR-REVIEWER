@@ -1,0 +1,42 @@
+const path = require("path");
+const { getGitAccess_Token } = require("../controllers/loginController")
+require("dotenv").config()
+
+const clientId = process.env.GITHUB_CLIENT_ID;
+
+const gitAuthorization = ((req, res) => {
+
+    console.log("Client ID:", process.env.GITHUB_CLIENT_ID);
+
+
+    const gitAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=http://localhost:4000/auth/github/callback&scope=repo&state=random123`;
+
+    res.redirect(gitAuthUrl)
+});
+
+const gitTempToken = (async (req, res) => {
+
+    const code = req.query.code;
+
+    const accessToken = await getGitAccess_Token(code);
+
+    res.cookie(
+        "github_access_token",
+        accessToken,
+        {
+            httpOnly: true,
+            secure: false,
+            sameSite: "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        }
+    );
+
+
+    res.json(accessToken);
+
+})
+
+module.exports = {
+    gitAuthorization,
+    gitTempToken
+}
