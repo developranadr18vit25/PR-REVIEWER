@@ -4,10 +4,12 @@ const cors=require("cors")
 const authRouter=require("../backend/routes/auth_routes")
 const repo_dataRouter=require("../backend/routes/repo_data_routes")
 const cookieParser = require("cookie-parser");
+const connectDB=require("./Database/connect")
 // const loginRouter=require("../backend/routes/login_routes")
 
 app.use(cors())
 app.use(cookieParser())
+connectDB()
 
 app.get("/" , (req,res)=>{
     res.send("Express is working")

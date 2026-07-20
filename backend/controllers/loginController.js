@@ -21,7 +21,7 @@ const getGitAccess_Token = async (code) => {
     })
     const data=await response.json();
 
-    return data;
+    return data.access_token;
 }
 
 module.exports={

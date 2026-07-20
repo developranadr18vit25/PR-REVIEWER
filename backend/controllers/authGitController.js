@@ -14,7 +14,7 @@ const gitAuthorization = ((req, res) => {
     res.redirect(gitAuthUrl)
 });
 
-const gitTempToken = (async (req, res) => {
+const gitTempToken = (async (req, res, next) => {
 
     const code = req.query.code;
 
@@ -26,13 +26,13 @@ const gitTempToken = (async (req, res) => {
         {
             httpOnly: true,
             secure: false,
-            sameSite: "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000
+            sameSite: "lax"
         }
     );
 
+    console.log("Calling next()");
 
-    res.json(accessToken);
+    next();
 
 })
 
