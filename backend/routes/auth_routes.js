@@ -8,6 +8,6 @@ router.route("/github")
 
 
 router.route("/github/callback")
-    .get(authGitController.gitTempToken ,userGitController.fetchUserDetails )
+    .get(authGitController.gitTempToken , userGitController.fetchUserDetails)
 
 module.exports=router;

@@ -14,7 +14,7 @@ const gitAuthorization = ((req, res) => {
     res.redirect(gitAuthUrl)
 });
 
-const gitTempToken = (async (req, res, next) => {
+const gitTempToken = (async (req, res ,next) => {
 
     const code = req.query.code;
 
@@ -32,7 +32,7 @@ const gitTempToken = (async (req, res, next) => {
 
     console.log("Calling next()");
 
-    next();
+    next()
 
 })
 
