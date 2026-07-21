@@ -31,6 +31,7 @@ const gitTempToken = (async (req, res ,next) => {
     );
 
     console.log("Calling next()");
+    console.log(accessToken)
 
     next()
 
