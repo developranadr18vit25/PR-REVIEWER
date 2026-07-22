@@ -8,6 +8,7 @@ const connectDB=require("./Database/connect")
 // const loginRouter=require("../backend/routes/login_routes")
 
 app.use(cors())
+app.use(express.json())
 app.use(cookieParser())
 connectDB()
 

@@ -5,15 +5,22 @@ from langchain_mistralai.embeddings import MistralAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter,Language
 import os
 
+embedding_model=MistralAIEmbeddings(model="mistral-embed")
+
 
 def chunk_data()->list:
 
-    repo_path="repositories/PASSWORD-MANAGER"
+    repo_path="../backend/repos"
     chunks=[]
+    allowed_extensions=(".html" , ".css" , ".js")
 
     for root,dirs,files in os.walk(repo_path):
 
         for file in files:
+
+            if not file.endswith(allowed_extensions):
+                continue
+
             file_path=os.path.join(root,file)
 
             with open(file_path , "r" , encoding="utf-8") as f:
@@ -22,14 +29,15 @@ def chunk_data()->list:
             if file.endswith(".html"):
 
                 splitter=RecursiveCharacterTextSplitter.from_language(
-                    Language.HTML,
+
+                    language=Language.HTML,
                     chunk_size=1000,
                     chunk_overlap=150
                 )
 
             elif file.endswith(".js"):
                 splitter=RecursiveCharacterTextSplitter.from_language(
-                    Language.JS,
+                    language=Language.JS,
                     chunk_size=1000,
                     chunk_overlap=150
                 )
@@ -45,9 +53,17 @@ def chunk_data()->list:
 
             chunks.extend(chunked_code)
 
-
     return chunks
 
 chunklist=chunk_data()
+
+def create_db(chunklist):
+
+    vector_db=Chroma.from_documents(
+        documents=chunklist,
+        embedding=embedding_model,
+        persist_directory="chroma-db"
+    )
+
 
 print(chunklist)
