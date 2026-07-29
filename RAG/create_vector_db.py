@@ -7,7 +7,6 @@ import os
 
 embedding_model=MistralAIEmbeddings(model="mistral-embed")
 
-
 def chunk_data()->list:
 
     repo_path="../backend/repos"
@@ -67,3 +66,5 @@ def create_db(chunklist):
 
 
 print(chunklist)
+create_db(chunklist)
+print("Vector db created successfully")
