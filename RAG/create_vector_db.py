@@ -1,11 +1,13 @@
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv("../backend/.env")
 from langchain_community.vectorstores import Chroma
 from langchain_mistralai.embeddings import MistralAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter,Language
 import os
 
 embedding_model=MistralAIEmbeddings(model="mistral-embed")
+
+print("My API Key is:", os.environ.get("MISTRAL_API_KEY"))
 
 def chunk_data()->list:
 
