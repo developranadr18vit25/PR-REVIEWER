@@ -2,19 +2,27 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_mistralai import ChatMistralAI
+from langchain_mistralai import ChatMistralAI , MistralAIEmbeddings
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from typing import List , TypedDict
+from langchain_community.vectorstores import Chroma
 
 llm=ChatMistralAI(model="mistral-small-latest")
-
+embedding_model=MistralAIEmbeddings(model="mistral-embed")
+vector_store = Chroma(
+    persist_directory="./vectorStore/chroma-db",
+    embedding_function=embedding_model
+)
 
 class PR_State(TypedDict):
 
-    raw_diff: dict
-    parsed_data:dict
-    related_code:list
+    raw_diff: List[dict]
+    parsed_data:List[dict]
+    file_code:List[dict]
+    dependencies:List[dict]
+
+    repo_Context:List[dict]
 
     code_analysis:dict
     security_analysis:dict
@@ -24,6 +32,43 @@ class PR_State(TypedDict):
 
     final_decision:str
     final_review:dict
+
+
+def get_changed_files(state: PR_State):
+
+    file_code = []
+
+    for file in state["parsed_data"]:
+
+        filename = file["filename"]
+
+        docs = vector_store.similarity_search(
+            query="",
+            k=100,
+            filter={
+                "file_path": filename
+            }
+        )
+
+        code = "\n\n".join(
+            doc.page_content
+            for doc in docs
+        )
+
+        file_code.append({
+            "filename": filename,
+            "code": code
+        })
+
+    return {
+        "file_code": file_code
+    }
+
+
+    
+
+    
+
 
 
 
