@@ -2,6 +2,19 @@ from pydantic import BaseModel
 from workFlow import PR_State
 from typing import List , TypedDict
 from helper import make_js_tree , find_function_calls , get_language
+from unsloth import FastLanguageModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
+MODEL_NAME = "boraoxkan/codereview-ai"
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME
+)
+
+model.eval()
 
 
 def find_syntax_errors(node):
@@ -9,53 +22,202 @@ def find_syntax_errors(node):
     errors = []
 
     if node.type == "ERROR":
+
         errors.append({
             "start": node.start_point,
             "end": node.end_point
         })
 
     for child in node.children:
-        errors.extend(find_syntax_errors(child))
+
+        errors.extend(
+            find_syntax_errors(child)
+        )
 
     return errors
 
 
-def codeanalyssis(state: PR_State):
+def check_syntax(code):
+
+    tree = make_js_tree(code)
+
+    errors = find_syntax_errors(
+        tree.root_node
+    )
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors
+    }
+
+def check_logic(code, patch, dependencies):
+
+    dependency_text = ""
+
+    for dependency in dependencies:
+
+        dependency_text += f"""
+        
+Function:
+{dependency["function"]}
+
+Code:
+{dependency["code"]}
+
+"""
+        
+    prompt = f"""
+Analyze this pull request for logical and behavioral bugs.
+
+Focus on bugs introduced by the patch.
+
+Do NOT focus on syntax errors.
+
+Use the full file and dependency code to understand the behavior.
+
+Return:
+
+- Bug found: yes/no
+- Severity: low/medium/high
+- Location
+- Explanation
+- Suggested fix
+
+================ PATCH ================
+
+{patch}
+
+================ FULL FILE ================
+
+{code}
+
+================ DEPENDENCIES ================
+
+{dependency_text}
+
+================ RESPONSE ================
+"""
+
+    inputs = tokenizer(
+        prompt,
+        return_tensors="pt"
+    )
+
+    with torch.no_grad():
+
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=512,
+            temperature=0.1
+        )
+
+    result = tokenizer.decode(
+        outputs[0],
+        skip_special_tokens=True
+    )
+
+    return result
+
+
+
+def codeAnalysis(state: PR_State):
 
     filecode = state["file_code"]
 
+    parsed_data = state["parsed_data"]
+
     syntax_results = []
+
+    logic_results = []
 
     for file in filecode:
 
         filename = file["filename"]
+
         code = file["code"]
 
-        language = get_language(filename)
+        patch = None
+        language = None
+
+        for parsed_file in parsed_data:
+
+            if parsed_file["filename"] == filename:
+
+                patch = parsed_file["patch"]
+
+                language = parsed_file["language"]
+
+                break
+
+        dependencies = file.get(
+            "dependencies",
+            []
+        )
 
         if language == "javascript":
 
-            tree = make_js_tree(code)
-
-            errors = find_syntax_errors(tree.root_node)
+            syntax_result = check_syntax(code)
 
             syntax_results.append({
+
                 "filename": filename,
-                "valid": len(errors) == 0,
-                "errors": errors
+
+                "valid": syntax_result["valid"],
+
+                "errors": syntax_result["errors"]
+
             })
+
+
+            if syntax_result["valid"]:
+
+                logic_result = check_logic(
+                    code,
+                    patch,
+                    dependencies
+                )
+
+
+                logic_results.append({
+
+                    "filename": filename,
+
+                    "result": logic_result
+
+                })
+
+
+            else:
+
+                logic_results.append({
+
+                    "filename": filename,
+
+                    "result": "Logic analysis skipped because syntax errors were found."
+
+                })
 
         else:
 
             syntax_results.append({
+
                 "filename": filename,
-                "valid": True,
-                "errors": []
+
+                "valid": None,
+
+                "errors": [],
+
+                "status": "unsupported_language"
+
             })
 
     return {
+
         "code_analysis": {
-            "syntax": syntax_results
+
+            "syntax": syntax_results,
+
+            "logic": logic_results
+
         }
     }
-    
