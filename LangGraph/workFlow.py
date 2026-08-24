@@ -22,14 +22,20 @@ class PR_State(TypedDict):
 
     raw_diff: List[dict]
     parsed_data:List[dict]
+    repo_path:str
+    pr_number:str
+    target_branch:str
     file_code:List[dict]
     dependencies:List[dict]
 
     repo_Context:List[dict]
 
     code_analysis:dict
+    merge_analysis:dict
+    isConflict:bool
+    conflict_analysis:List[dict]
     security_analysis:dict
-    impact_analysis:dict
+    
 
     risk_score:int
 

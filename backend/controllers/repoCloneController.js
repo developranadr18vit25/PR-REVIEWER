@@ -1,36 +1,63 @@
-const simpleGit = require("simple-git")
+const simpleGit = require("simple-git");
 const path = require("path");
-const fs = require("fs")
+const fs = require("fs");
 
-const cloneRepo = (async(req, res) => {
+const cloneRepo = async (req, res) => {
 
     try {
+
         const repoUrl = req.body.repoUrl;
 
-        const folderName = path.join(
+        const repoName = repoUrl
+            .split("/")
+            .pop()
+            .replace(".git", "");
+
+        const reposDir = path.join(
             __dirname,
             "../repos"
-        )
+        );
 
-        if (!fs.existsSync(folderName)) {
-            fs.mkdirSync(folderName)
+        if (!fs.existsSync(reposDir)) {
+
+            fs.mkdirSync(
+                reposDir,
+                { recursive: true }
+            );
         }
+
+        const repoPath = path.join(
+            reposDir,
+            repoName
+        );
 
         await simpleGit().clone(
             repoUrl,
-            folderName
+            repoPath
         );
 
         return res.json({
-            message:"Repository cloned Successfully"
-        })
+
+            message: "Repository cloned successfully",
+
+            repoPath: repoPath
+
+        });
 
     } catch (error) {
 
-        console.log(error)
-    }
-})
+        console.log(error);
 
-module.exports={
+        return res.status(500).json({
+
+            message: "Failed to clone repository",
+
+            error: error.message
+
+        });
+    }
+};
+
+module.exports = {
     cloneRepo
-}
+};
