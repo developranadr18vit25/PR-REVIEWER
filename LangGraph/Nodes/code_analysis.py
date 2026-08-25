@@ -1,20 +1,15 @@
-from pydantic import BaseModel
+import os
+
+from huggingface_hub import InferenceClient
 from workFlow import PR_State
-from typing import List , TypedDict
-from helper import make_js_tree , find_function_calls , get_language
-from unsloth import FastLanguageModel
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+from helper import make_js_tree
+
 
 MODEL_NAME = "boraoxkan/codereview-ai"
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME
+client = InferenceClient(
+    api_key=os.environ["HF_TOKEN"]
 )
-
-model.eval()
 
 
 def find_syntax_errors(node):
@@ -50,6 +45,7 @@ def check_syntax(code):
         "errors": errors
     }
 
+
 def check_logic(code, patch, dependencies):
 
     dependency_text = ""
@@ -57,7 +53,6 @@ def check_logic(code, patch, dependencies):
     for dependency in dependencies:
 
         dependency_text += f"""
-        
 Function:
 {dependency["function"]}
 
@@ -65,7 +60,7 @@ Code:
 {dependency["code"]}
 
 """
-        
+
     prompt = f"""
 Analyze this pull request for logical and behavioral bugs.
 
@@ -98,26 +93,23 @@ Return:
 ================ RESPONSE ================
 """
 
-    inputs = tokenizer(
-        prompt,
-        return_tensors="pt"
+    response = client.chat.completions.create(
+
+        model=MODEL_NAME,
+
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+
+        max_tokens=512,
+
+        temperature=0.1
     )
 
-    with torch.no_grad():
-
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=512,
-            temperature=0.1
-        )
-
-    result = tokenizer.decode(
-        outputs[0],
-        skip_special_tokens=True
-    )
-
-    return result
-
+    return response.choices[0].message.content
 
 
 def codeAnalysis(state: PR_State):
@@ -168,7 +160,6 @@ def codeAnalysis(state: PR_State):
 
             })
 
-
             if syntax_result["valid"]:
 
                 logic_result = check_logic(
@@ -176,7 +167,6 @@ def codeAnalysis(state: PR_State):
                     patch,
                     dependencies
                 )
-
 
                 logic_results.append({
 
@@ -186,14 +176,14 @@ def codeAnalysis(state: PR_State):
 
                 })
 
-
             else:
 
                 logic_results.append({
 
                     "filename": filename,
 
-                    "result": "Logic analysis skipped because syntax errors were found."
+                    "result":
+                        "Logic analysis skipped because syntax errors were found."
 
                 })
 
