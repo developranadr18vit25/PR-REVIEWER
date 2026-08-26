@@ -1,9 +1,7 @@
 import os
-import json
 import subprocess
 
 from huggingface_hub import InferenceClient
-
 from workFlow import PR_State
 
 
@@ -16,7 +14,7 @@ client = InferenceClient(
 )
 
 
-def get_conflict_content(repo_path, filename):
+def get_conflict_content(worktree, filename):
 
     result = subprocess.run(
         [
@@ -25,12 +23,13 @@ def get_conflict_content(repo_path, filename):
             "--",
             filename
         ],
-        cwd=repo_path,
+        cwd=worktree,
         capture_output=True,
         text=True
     )
 
     if result.returncode != 0:
+
         raise RuntimeError(
             f"Failed to get conflict for {filename}:\n"
             f"{result.stderr}"
@@ -41,7 +40,10 @@ def get_conflict_content(repo_path, filename):
 
 def get_conflicting_files(state):
 
-    simulated_merge = state["simulated_merge"]
+    simulated_merge = state.get(
+        "simulated_merge",
+        {}
+    )
 
     return simulated_merge.get(
         "conflicting_files",
@@ -51,7 +53,12 @@ def get_conflicting_files(state):
 
 def get_dependencies_for_file(state, filename):
 
-    for file in state.get("file_code", []):
+    file_code = state.get(
+        "file_code",
+        []
+    )
+
+    for file in file_code:
 
         if file.get("filename") == filename:
 
@@ -61,6 +68,7 @@ def get_dependencies_for_file(state, filename):
             )
 
     return []
+
 
 def get_file_code(state, filename):
 
@@ -111,7 +119,6 @@ def format_dependencies(dependencies):
     for dependency in dependencies:
 
         result += f"""
-        
 FILE:
 {dependency.get("filename", "unknown")}
 
@@ -141,14 +148,16 @@ def analyze_conflict_with_llm(
     )
 
     prompt = f"""
-You are an expert software engineer analyzing
-a Git merge conflict.
+You are a senior software engineer specializing in
+Git merge conflicts and repository-level code analysis.
 
-Your job is NOT simply to choose the MAIN version
-or the PR version.
+Analyze the following Git merge conflict.
 
-You must understand the behavior of both versions
-using the repository context and dependencies.
+Do NOT blindly prefer MAIN.
+Do NOT blindly prefer the PR.
+
+Understand the behavior of both versions and determine
+whether the changes should be kept, rejected, or combined.
 
 ==================================================
 CONFLICTING FILE
@@ -165,7 +174,7 @@ GIT CONFLICT
 
 
 ==================================================
-CURRENT FILE CONTEXT
+FULL FILE CODE
 ==================================================
 
 {file_code}
@@ -198,43 +207,33 @@ TASK
 
 Analyze this merge conflict.
 
-Answer all of the following:
+Answer:
 
 1. Why did the merge conflict occur?
 
-2. What changes were made in the MAIN branch?
+2. What changes were made in MAIN?
 
 3. What changes were made by the PR?
 
-4. What is the behavioral difference between
-   the two versions?
+4. What is the behavioral difference between them?
 
-5. What code should be preserved?
+5. Should MAIN be preserved?
 
-6. Should the MAIN version be kept?
+6. Should the PR be preserved?
 
-7. Should the PR version be kept?
+7. Should both changes be combined?
 
-8. Should the two changes be combined?
+8. What exact code changes should the developer make?
 
-9. What exact changes should the developer make
-   to resolve the conflict?
+9. Which files need to be modified?
 
-10. Which files need to be modified?
+10. Which functions are affected?
 
-11. Which functions may be affected?
+11. What bugs could occur if the conflict is resolved incorrectly?
 
-12. Could resolving the conflict incorrectly
-    introduce a bug or break existing behavior?
+12. How confident are you in the recommendation?
 
-Do NOT blindly prefer MAIN.
-
-Do NOT blindly prefer the PR.
-
-Use the supplied dependency and repository
-context to justify your recommendation.
-
-Return your answer in the following structure:
+Return the result using this structure:
 
 WHY_CONFLICT:
 ...
@@ -268,7 +267,6 @@ low/medium/high
 """
 
     response = client.chat_completion(
-
         model=MODEL_NAME,
 
         messages=[
@@ -276,10 +274,12 @@ low/medium/high
                 "role": "system",
                 "content": (
                     "You are a senior software engineer "
-                    "specializing in Git merge conflicts "
-                    "and repository-level code analysis."
+                    "specializing in Git merge conflicts, "
+                    "code review, and repository-level "
+                    "software analysis."
                 )
             },
+
             {
                 "role": "user",
                 "content": prompt
@@ -296,6 +296,7 @@ low/medium/high
 
 def conflict_analysis(state: PR_State):
 
+
     simulated_merge = state.get(
         "simulated_merge",
         {}
@@ -309,27 +310,51 @@ def conflict_analysis(state: PR_State):
         return {
             "conflict_analysis": {
                 "has_conflict": False,
+                "conflicting_files": [],
                 "results": []
             }
         }
+
+
+    worktree = simulated_merge.get(
+        "worktree"
+    )
+
+    if not worktree:
+
+        return {
+            "conflict_analysis": {
+                "has_conflict": True,
+                "conflicting_files": [],
+                "results": [],
+                "error": (
+                    "Merge conflict was detected, "
+                    "but the temporary worktree path "
+                    "was not found."
+                )
+            }
+        }
+
 
     conflicting_files = get_conflicting_files(
         state
     )
 
-    repo_path = state["repo_path"]
 
     repo_context = state.get(
         "repo_Context",
         []
     )
 
+
     results = []
+
 
     for filename in conflicting_files:
 
+
         conflict = get_conflict_content(
-            repo_path,
+            worktree,
             filename
         )
 

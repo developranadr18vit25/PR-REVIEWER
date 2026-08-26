@@ -11,7 +11,6 @@ client = InferenceClient(
     api_key=os.environ["HF_TOKEN"]
 )
 
-
 def find_syntax_errors(node):
 
     errors = []
