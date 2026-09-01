@@ -51,62 +51,64 @@ def check_logic(code, patch, dependencies):
 
     for dependency in dependencies:
 
-        dependency_text += f"""
-Function:
-{dependency["function"]}
+        for data in dependency['fetched_code']:
 
-Code:
-{dependency["code"]}
-
-"""
-
+            dependency_text += f"""
+            Function:
+            {data['functionName']}
+            
+            Code:
+            {data['functionCode']}
+            
+            """
+            
     prompt = f"""
-Analyze this pull request for logical and behavioral bugs.
-
-Focus on bugs introduced by the patch.
-
-Do NOT focus on syntax errors.
-
-Use the full file and dependency code to understand the behavior.
-
-Return:
-
-- Bug found: yes/no
-- Severity: low/medium/high
-- Location
-- Explanation
-- Suggested fix
-
-================ PATCH ================
-
-{patch}
-
-================ FULL FILE ================
-
-{code}
-
-================ DEPENDENCIES ================
-
-{dependency_text}
-
-================ RESPONSE ================
-"""
-
+            Analyze this pull request for logical and behavioral bugs.
+            
+            Focus on bugs introduced by the patch.
+            
+            Do NOT focus on syntax errors.
+            
+            Use the full file and dependency code to understand the behavior.
+            
+            Return:
+            
+            - Bug found: yes/no
+            - Severity: low/medium/high
+            - Location
+            - Explanation
+            - Suggested fix
+            
+            ================ PATCH ================
+            
+            {patch}
+            
+            ================ FULL FILE ================
+            
+            {code}
+            
+            ================ DEPENDENCIES ================
+            
+            {dependency_text}
+            
+            ================ RESPONSE ================
+            """
+            
     response = client.chat.completions.create(
 
-        model=MODEL_NAME,
+            model=MODEL_NAME,
 
-        messages=[
-            {
+                messages=[
+                {
                 "role": "user",
-                "content": prompt
-            }
-        ],
+                    "content": prompt
+                }
+            ],
 
-        max_tokens=512,
+            max_tokens=512,
 
-        temperature=0.1
-    )
+            temperature=0.1
+        )
 
     return response.choices[0].message.content
 

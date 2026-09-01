@@ -7,9 +7,9 @@ from workFlow import vector_store
 
 def fetch_dependencies(state: PR_State):
 
-    dependencies = []
-
     for file in state["file_code"]:
+
+        dependencies = []
 
         filename = file["filename"]
         code = file["code"]
@@ -28,46 +28,42 @@ def fetch_dependencies(state: PR_State):
             calls = find_function_calls(tree.root_node)
 
             dependencies.append({
-                "filename": filename,
                 "calls": calls
             })
 
+        file["dependencies"]=dependencies
+
     return {
-        "dependencies": dependencies
+        "file_code":state['file_code']
     }
 
 def fetch_db_dependencies(state: PR_State):
 
     file_code = state["file_code"]
 
-    for dependency_info in state["dependencies"]:
+    for file in state['file_code']:
 
-        filename = dependency_info["filename"]
-        calls = dependency_info["calls"]
+        code=[]
 
-        for file in file_code:
+        for dependency in file["dependencies"]:
 
-            if file["filename"] != filename:
-                continue
+            code=[]
 
-            dependency_code = []
+            for call in dependency['calls']:
 
-            for call in calls:
-
-                docs = vector_store.similarity_search(
+                docs=vector_store.similarity_search(
                     query=call,
                     k=3
                 )
 
                 for doc in docs:
 
-                    dependency_code.append({
-                        "function": call,
-                        "code": doc.page_content,
-                        "metadata": doc.metadata
+                    code.append({
+                        "functionName":call,
+                        "functionCode":doc.page_content
                     })
 
-            file["dependencies"] = dependency_code
+            dependency["fetched_code"]=code
 
     return {
         "file_code": file_code
