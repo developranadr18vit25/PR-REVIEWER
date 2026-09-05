@@ -26,7 +26,6 @@ class PR_State(TypedDict):
     pr_number:str
     target_branch:str
     file_code:List[dict]
-    dependencies:List[dict]
 
     repo_Context:List[dict]
 

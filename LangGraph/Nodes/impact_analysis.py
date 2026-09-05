@@ -1,389 +1,527 @@
 import os
-import json
+import ast
+from collections import defaultdict, deque
+from unidiff import PatchSet
 
-from huggingface_hub import InferenceClient
 from workFlow import PR_State
 
 
-MODEL_NAME = "boraoxkan/codereview-ai"
+def get_changed_lines(patch):  # THIS PROVIDES THE LINES WHERE CHANGED HAVE BEEN OCCURRED INSIDE THE PATCH
 
-client = InferenceClient(
-    api_key=os.environ["HF_TOKEN"]
-)
+    changed_lines = []
 
+    if not patch:
+        return changed_lines
 
-def get_logic_errors(state):
+    patch_set = PatchSet(patch)
 
-    code_analysis = state.get(
-        "code_analysis",
-        {}
-    )
+    for file in patch_set:
 
-    logic_results = code_analysis.get(
-        "logic",
-        []
-    )
+        for hunk in file:
 
-    errors = []
+            for line in hunk:
 
-    for result in logic_results:
+                if line.is_added:
+                    changed_lines.append(
+                        line.target_line_no
+                    )
 
-        analysis = result.get(
-            "result",
-            ""
-        )
-
-        errors.append({
-            "filename": result.get(
-                "filename",
-                "unknown"
-            ),
-            "analysis": analysis
-        })
-
-    return errors
+    return changed_lines
 
 
-def get_related_functions(state, filename):
+def get_functions(code):   # THIS PROVIDES ALL FUNCTION 
 
-    file_code = state.get(
-        "file_code",
-        []
-    )
+    functions = []
 
-    for file in file_code:
+    try:
+        tree = ast.parse(code)
 
-        if file.get("filename") == filename:
+    except SyntaxError:
+        return functions
 
-            return file.get(
-                "dependencies",
-                []
+    for node in ast.walk(tree):
+
+        if isinstance(node, ast.FunctionDef):
+
+            functions.append({
+                "name": node.name,
+                "start": node.lineno,
+                "end": node.end_lineno
+            })
+
+    return functions
+
+def find_changed_functions(code, changed_lines):  # THIS GIVES ALL THE FUNCTIONS WHICH LIE WITHIN THE RANGE OF THE CHANGED LINES 
+
+    functions = get_functions(code)
+
+    changed_functions = []
+
+    for function in functions:
+
+        for line in changed_lines:
+
+            if (
+                function["start"]
+                <= line
+                <= function["end"]
+            ):
+
+                changed_functions.append(
+                    function
+                )
+
+                break
+
+    return changed_functions
+
+def get_called_functions(function_node): # THIS FINDS THE FUNCTIONS CALLED INSIDE A FUNCTION
+
+    called_functions = []
+
+    for node in ast.walk(function_node):
+
+        if not isinstance(node, ast.Call):
+            continue
+
+        if isinstance(node.func, ast.Name):
+
+            called_functions.append(
+                node.func.id
             )
 
-    return []
+        elif isinstance(node.func, ast.Attribute):
 
-
-def get_file_code(state, filename):
-
-    file_code = state.get(
-        "file_code",
-        []
-    )
-
-    for file in file_code:
-
-        if file.get("filename") == filename:
-
-            return file.get(
-                "code",
-                ""
+            called_functions.append(
+                node.func.attr
             )
 
-    return ""
-
-
-def get_dependencies(state, filename):
-
-    file_code = state.get(
-        "file_code",
-        []
-    )
-
-    for file in file_code:
-
-        if file.get("filename") == filename:
-
-            return file.get(
-                "dependencies",
-                []
-            )
-
-    return []
+    return called_functions
 
 
 # ============================================================
+# 5. BUILD CALL GRAPH
+# ============================================================
 
+def build_call_graph(worktree):
 
-def format_dependencies(dependencies):
+    graph = defaultdict(list)
 
-    if not dependencies:
+    functions = {}
 
-        return "No dependency information available."
+    for root, dirs, files in os.walk(worktree):
 
-    result = ""
+        # Ignore these folders
 
-    for dependency in dependencies:
+        dirs[:] = [
+            d for d in dirs
+            if d not in [
+                ".git",
+                "__pycache__",
+                ".venv",
+                "venv"
+            ]
+        ]
 
-        result += f"""
-FILE:
-{dependency.get("filename", "unknown")}
+        for filename in files:
 
-FUNCTION:
-{dependency.get("function", "unknown")}
+            if not filename.endswith(".py"):
+                continue
 
-CODE:
-{dependency.get("code", "")}
+            path = os.path.join(
+                root,
+                filename
+            )
 
-----------------------------------------
-"""
+            try:
 
-    return result
+                with open(
+                    path,
+                    "r",
+                    encoding="utf-8"
+                ) as file:
 
+                    code = file.read()
 
+                tree = ast.parse(code)
 
+            except Exception:
+                continue
 
-def analyze_impact_with_llm(
-    filename,
-    logic_error,
-    file_code,
-    dependencies
-):
+            relative_path = os.path.relpath(
+                path,
+                worktree
+            )
 
-    dependency_text = format_dependencies(
-        dependencies
-    )
+            for node in ast.walk(tree):
 
-    prompt = f"""
-You are a senior software engineer performing
-repository-level impact analysis.
+                if not isinstance(
+                    node,
+                    ast.FunctionDef
+                ):
+                    continue
 
-A previous code analysis detected a logical or
-behavioral bug in a pull request.
+                function_name = node.name
 
-Your job is NOT to find a new bug.
-
-Your job is to determine how the identified bug
-can propagate through the rest of the application.
-
-You must analyze:
-
-1. The function containing the bug.
-2. Other functions that depend on it.
-3. Data returned by the affected function.
-4. How that data is used by other functions.
-5. Which files may be affected.
-6. Which application behavior may change.
-7. Whether the bug can propagate further.
-
-Do NOT assume that every dependency is affected.
-
-Only mark a function or file as affected if there
-is a reasonable data-flow or behavioral relationship.
-
-==================================================
-FILE CONTAINING LOGICAL BUG
-==================================================
-
-{filename}
-
-
-==================================================
-LOGIC ANALYSIS RESULT
-==================================================
-
-{logic_error}
-
-
-==================================================
-FULL FILE CODE
-==================================================
-
-{file_code}
-
-
-==================================================
-RELATED FUNCTIONS / DEPENDENCIES
-==================================================
-
-{dependency_text}
-
-
-==================================================
-TASK
-==================================================
-
-Trace the potential impact of this logical bug.
-
-Determine:
-
-1. What function contains the original problem?
-
-2. What data or behavior produced by that function
-   can be incorrect?
-
-3. Which other functions consume that data or
-   depend on that behavior?
-
-4. Which other files may be affected?
-
-5. What data may become incorrect?
-
-6. What application behavior may break?
-
-7. How far can the bug propagate?
-
-8. Are there functions that are NOT affected?
-
-9. What should the developer test after fixing
-   the original bug?
-
-Return ONLY this structure:
-
-ORIGINAL_BUG:
-...
-
-ORIGINAL_FUNCTION:
-...
-
-INCORRECT_DATA_OR_BEHAVIOR:
-...
-
-AFFECTED_FUNCTIONS:
-- file: ...
-  function: ...
-  reason: ...
-
-AFFECTED_FILES:
-- file: ...
-  reason: ...
-
-AFFECTED_DATA:
-- data: ...
-  impact: ...
-
-DOWNSTREAM_IMPACT:
-...
-
-PROPAGATION_PATH:
-...
-
-UNAFFECTED_COMPONENTS:
-...
-
-RECOMMENDED_TESTS:
-...
-
-IMPACT_SEVERITY:
-LOW/MEDIUM/HIGH/CRITICAL
-
-CONFIDENCE:
-low/medium/high
-"""
-
-    response = client.chat.completions.create(
-
-        model=MODEL_NAME,
-
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a senior software engineer "
-                    "specializing in dependency analysis, "
-                    "data flow, and software impact analysis."
+                function_id = (
+                    relative_path,
+                    function_name
                 )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
 
-        max_tokens=2500,
+                functions[function_id] = {
+                    "filename": relative_path,
+                    "function": function_name,
+                    "start": node.lineno,
+                    "end": node.end_lineno
+                }
 
-        temperature=0.1
-    )
+                called_functions = (
+                    get_called_functions(node)
+                )
 
-    return response.choices[0].message.content
+                for called in called_functions:
 
+                    graph[function_id].append(
+                        called
+                    )
+
+    return graph, functions
+
+
+# ============================================================
+# 6. CONNECT CALLS TO REAL FUNCTIONS
+# ============================================================
+
+def resolve_graph(graph, functions):
+
+    name_to_functions = defaultdict(list)
+
+    # Create:
+    #
+    # authenticate
+    #     ↓
+    # auth.py:authenticate
+
+    for function_id in functions:
+
+        name = function_id[1]
+
+        name_to_functions[name].append(
+            function_id
+        )
+
+    new_graph = defaultdict(list)
+
+    for caller in graph:
+
+        for called_name in graph[caller]:
+
+            possible_functions = (
+                name_to_functions[called_name]
+            )
+
+            for function in possible_functions:
+
+                new_graph[caller].append(
+                    function
+                )
+
+    return new_graph
+
+
+# ============================================================
+# 7. REVERSE THE GRAPH
+# ============================================================
+
+def reverse_graph(graph):
+
+    reverse = defaultdict(list)
+
+    for caller in graph:
+
+        for callee in graph[caller]:
+
+            reverse[callee].append(
+                caller
+            )
+
+    return reverse
+
+
+# ============================================================
+# 8. BFS IMPACT ANALYSIS
+# ============================================================
+
+def bfs(changed_functions, reverse):
+
+    queue = deque()
+
+    visited = set()
+
+    impacted = []
+
+    # Start from changed functions
+
+    for function in changed_functions:
+
+        if function not in visited:
+
+            visited.add(function)
+
+            queue.append(function)
+
+    # BFS
+
+    while queue:
+
+        current = queue.popleft()
+
+        impacted.append(current)
+
+        # Find functions that depend on current
+
+        for function in reverse[current]:
+
+            if function not in visited:
+
+                visited.add(function)
+
+                queue.append(function)
+
+    return impacted
+
+
+# ============================================================
+# 9. MAIN IMPACT ANALYSIS
+# ============================================================
 
 def impact_analysis(state: PR_State):
 
+    simulated_merge = state.get(
+        "simulated_merge",
+        {}
+    )
 
-    logic_errors = get_logic_errors(state)
+    # No simulated merge
 
-    if not logic_errors:
+    if not simulated_merge:
 
         return {
             "impact_analysis": {
-                "success": True,
-                "has_logical_errors": False,
-                "results": []
+                "success": False,
+                "error": "Simulated merge not performed."
             }
         }
 
+    # Merge conflict
 
-    impact_results = []
+    if simulated_merge.get(
+        "merge_conflict",
+        False
+    ):
 
+        return {
+            "impact_analysis": {
+                "success": False,
+                "skipped": True,
+                "reason": "Merge conflict detected."
+            }
+        }
 
+    worktree = simulated_merge.get(
+        "worktree"
+    )
 
+    if not worktree:
 
-    for error in logic_errors:
+        return {
+            "impact_analysis": {
+                "success": False,
+                "error": "Worktree not found."
+            }
+        }
 
-        filename = error.get(
-            "filename"
-        )
-
-        logic_error = error.get(
-            "analysis",
-            ""
-        )
-
+    try:
 
         # ----------------------------------------------------
-        # Get complete file containing the bug
+        # STEP 1: Find changed functions
         # ----------------------------------------------------
 
-        file_code = get_file_code(
-            state,
-            filename
+        changed_functions = []
+
+        parsed_data = state.get(
+            "parsed_data",
+            []
         )
 
-
-    
-
-        dependencies = get_dependencies(
-            state,
-            filename
+        file_code = state.get(
+            "file_code",
+            []
         )
 
+        for file in parsed_data:
 
+            filename = file.get(
+                "filename"
+            )
 
-        impact = analyze_impact_with_llm(
+            patch = file.get(
+                "patch",
+                ""
+            )
 
-            filename=filename,
+            changed_lines = get_changed_lines(
+                patch
+            )
 
-            logic_error=logic_error,
+            # Find code for this file
 
-            file_code=file_code,
+            code = ""
 
-            dependencies=dependencies
+            for item in file_code:
+
+                if item.get(
+                    "filename"
+                ) == filename:
+
+                    code = item.get(
+                        "code",
+                        ""
+                    )
+
+                    break
+
+            if not code:
+                continue
+
+            functions = find_changed_functions(
+                code,
+                changed_lines
+            )
+
+            for function in functions:
+
+                changed_functions.append({
+
+                    "filename": filename,
+
+                    "function": function["name"],
+
+                    "start": function["start"],
+
+                    "end": function["end"],
+
+                    "changed_lines": changed_lines
+
+                })
+
+        # ----------------------------------------------------
+        # STEP 2: Build graph from whole merged repository
+        # ----------------------------------------------------
+
+        graph, all_functions = build_call_graph(
+            worktree
         )
 
+        # ----------------------------------------------------
+        # STEP 3: Resolve function names
+        # ----------------------------------------------------
 
-        impact_results.append({
+        graph = resolve_graph(
+            graph,
+            all_functions
+        )
 
-            "filename": filename,
+        # ----------------------------------------------------
+        # STEP 4: Reverse graph
+        # ----------------------------------------------------
 
-            "logic_error": logic_error,
+        reverse = reverse_graph(
+            graph
+        )
 
-            "impact": impact
+        # ----------------------------------------------------
+        # STEP 5: Get graph IDs of changed functions
+        # ----------------------------------------------------
 
-        })
+        changed_ids = []
 
+        for function in changed_functions:
 
-    return {
+            function_id = (
+                function["filename"],
+                function["function"]
+            )
 
-        "impact_analysis": {
+            if function_id in all_functions:
 
-            "success": True,
+                changed_ids.append(
+                    function_id
+                )
 
-            "has_logical_errors": True,
+        # ----------------------------------------------------
+        # STEP 6: BFS
+        # ----------------------------------------------------
 
-            "issue_count": len(logic_errors),
+        impacted_ids = bfs(
+            changed_ids,
+            reverse
+        )
 
-            "results": impact_results
+        # ----------------------------------------------------
+        # STEP 7: Convert IDs into readable output
+        # ----------------------------------------------------
+
+        impacted_functions = []
+
+        for function_id in impacted_ids:
+
+            info = all_functions.get(
+                function_id
+            )
+
+            if info:
+
+                impacted_functions.append(
+                    info
+                )
+
+        # ----------------------------------------------------
+        # STEP 8: Return result
+        # ----------------------------------------------------
+
+        return {
+
+            "impact_analysis": {
+
+                "success": True,
+
+                "changed_functions":
+                    changed_functions,
+
+                "impacted_functions":
+                    impacted_functions,
+
+                "changed_function_count":
+                    len(changed_functions),
+
+                "impacted_function_count":
+                    len(impacted_functions)
+
+            }
 
         }
 
-    }
+    except Exception as e:
+
+        return {
+
+            "impact_analysis": {
+
+                "success": False,
+
+                "error": str(e)
+
+            }
+
+        }

@@ -139,8 +139,7 @@ def analyze_conflict_with_llm(
     conflict,
     file_code,
     patch,
-    dependencies,
-    repo_context
+    dependencies
 ):
 
     dependency_text = format_dependencies(
@@ -193,12 +192,6 @@ DEPENDENCIES
 
 {dependency_text}
 
-
-==================================================
-REPOSITORY CONTEXT
-==================================================
-
-{repo_context}
 
 
 ==================================================
@@ -341,12 +334,6 @@ def conflict_analysis(state: PR_State):
     )
 
 
-    repo_context = state.get(
-        "repo_Context",
-        []
-    )
-
-
     results = []
 
 
@@ -384,8 +371,6 @@ def conflict_analysis(state: PR_State):
             patch=patch,
 
             dependencies=dependencies,
-
-            repo_context=repo_context
         )
 
         results.append({
