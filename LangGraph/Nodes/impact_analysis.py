@@ -97,21 +97,16 @@ def get_called_functions(function_node): # THIS FINDS THE FUNCTIONS CALLED INSID
             )
 
     return called_functions
+    
 
-
-# ============================================================
-# 5. BUILD CALL GRAPH
-# ============================================================
-
-def build_call_graph(worktree):
+def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH FUNCTIONS , WE HAVE TO STORED FUNCTIONS WHICH ARE RELATED TO IT OR CALLED INSIDE IT
+# WE ALSO CREAT A FUNCTIONS DICTONARY WHICH STORES INFO ABOUT A FUNCTION LIKE WHICH FILE IS IT PRESENT AND ALL 
 
     graph = defaultdict(list)
 
     functions = {}
 
     for root, dirs, files in os.walk(worktree):
-
-        # Ignore these folders
 
         dirs[:] = [
             d for d in dirs
@@ -188,19 +183,12 @@ def build_call_graph(worktree):
     return graph, functions
 
 
-# ============================================================
-# 6. CONNECT CALLS TO REAL FUNCTIONS
-# ============================================================
-
 def resolve_graph(graph, functions):
+    
+    # WE MODIFY THE GRAPH AS PREVIOUSLY WE HAVE FUNCTION NAME,ID -> FUNCTION AND NOW WE MAKE IT FUNCTION NAME , ID -> FUNCTION NAME, ID
+    #THIS HELPS TO KNOW THAT WHICH FILE THE FUNCTIONS BELONG TO 
 
     name_to_functions = defaultdict(list)
-
-    # Create:
-    #
-    # authenticate
-    #     ↓
-    # auth.py:authenticate
 
     for function_id in functions:
 
@@ -228,10 +216,7 @@ def resolve_graph(graph, functions):
 
     return new_graph
 
-
-# ============================================================
 # 7. REVERSE THE GRAPH
-# ============================================================
 
 def reverse_graph(graph):
 
