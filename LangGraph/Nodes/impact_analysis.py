@@ -100,7 +100,7 @@ def get_called_functions(function_node): # THIS FINDS THE FUNCTIONS CALLED INSID
     
 
 def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH FUNCTIONS , WE HAVE TO STORED FUNCTIONS WHICH ARE RELATED TO IT OR CALLED INSIDE IT
-# WE ALSO CREAT A FUNCTIONS DICTONARY WHICH STORES INFO ABOUT A FUNCTION LIKE WHICH FILE IS IT PRESENT AND ALL 
+# WE ALSO CREATE A FUNCTIONS DICTONARY WHICH STORES INFO ABOUT A FUNCTION LIKE WHICH FILE IS IT PRESENT AND ALL 
 
     graph = defaultdict(list)
 
@@ -216,9 +216,8 @@ def resolve_graph(graph, functions):
 
     return new_graph
 
-# 7. REVERSE THE GRAPH
 
-def reverse_graph(graph):
+def reverse_graph(graph):  # WE REVERSE THE GRAPH AND ESTABLISH THE RELATION CALLED FUNCTIONS INSIDE A FUNCTION -> FUNCTION
 
     reverse = defaultdict(list)
 
@@ -233,11 +232,7 @@ def reverse_graph(graph):
     return reverse
 
 
-# ============================================================
-# 8. BFS IMPACT ANALYSIS
-# ============================================================
-
-def bfs(changed_functions, reverse):
+def bfs(changed_functions, reverse):   # THIS FUNCTION PERFORMS THE BFS WHERE IT FINDS ALL THE FUNCTIONS WHICH MIGHT BE AFFECTED IF THERE IS A CHANGE DONE IN A PARTICULAR FUNCTION 
 
     queue = deque()
 
@@ -245,7 +240,6 @@ def bfs(changed_functions, reverse):
 
     impacted = []
 
-    # Start from changed functions
 
     for function in changed_functions:
 
@@ -255,7 +249,6 @@ def bfs(changed_functions, reverse):
 
             queue.append(function)
 
-    # BFS
 
     while queue:
 
@@ -263,7 +256,6 @@ def bfs(changed_functions, reverse):
 
         impacted.append(current)
 
-        # Find functions that depend on current
 
         for function in reverse[current]:
 
@@ -276,18 +268,10 @@ def bfs(changed_functions, reverse):
     return impacted
 
 
-# ============================================================
-# 9. MAIN IMPACT ANALYSIS
-# ============================================================
-
 def impact_analysis(state: PR_State):
 
-    simulated_merge = state.get(
-        "simulated_merge",
-        {}
-    )
+    simulated_merge = state.get("simulated_merge",{} )
 
-    # No simulated merge
 
     if not simulated_merge:
 
@@ -297,13 +281,9 @@ def impact_analysis(state: PR_State):
                 "error": "Simulated merge not performed."
             }
         }
+        
 
-    # Merge conflict
-
-    if simulated_merge.get(
-        "merge_conflict",
-        False
-    ):
+    if simulated_merge.get("merge_conflict",False):
 
         return {
             "impact_analysis": {
@@ -313,9 +293,7 @@ def impact_analysis(state: PR_State):
             }
         }
 
-    worktree = simulated_merge.get(
-        "worktree"
-    )
+    worktree = simulated_merge.get("worktree")
 
     if not worktree:
 
@@ -327,10 +305,6 @@ def impact_analysis(state: PR_State):
         }
 
     try:
-
-        # ----------------------------------------------------
-        # STEP 1: Find changed functions
-        # ----------------------------------------------------
 
         changed_functions = []
 
@@ -358,8 +332,6 @@ def impact_analysis(state: PR_State):
             changed_lines = get_changed_lines(
                 patch
             )
-
-            # Find code for this file
 
             code = ""
 
@@ -397,37 +369,20 @@ def impact_analysis(state: PR_State):
                     "end": function["end"],
 
                     "changed_lines": changed_lines
-
                 })
-
-        # ----------------------------------------------------
-        # STEP 2: Build graph from whole merged repository
-        # ----------------------------------------------------
 
         graph, all_functions = build_call_graph(
             worktree
         )
-
-        # ----------------------------------------------------
-        # STEP 3: Resolve function names
-        # ----------------------------------------------------
 
         graph = resolve_graph(
             graph,
             all_functions
         )
 
-        # ----------------------------------------------------
-        # STEP 4: Reverse graph
-        # ----------------------------------------------------
-
         reverse = reverse_graph(
             graph
         )
-
-        # ----------------------------------------------------
-        # STEP 5: Get graph IDs of changed functions
-        # ----------------------------------------------------
 
         changed_ids = []
 
@@ -444,18 +399,10 @@ def impact_analysis(state: PR_State):
                     function_id
                 )
 
-        # ----------------------------------------------------
-        # STEP 6: BFS
-        # ----------------------------------------------------
-
         impacted_ids = bfs(
             changed_ids,
             reverse
         )
-
-        # ----------------------------------------------------
-        # STEP 7: Convert IDs into readable output
-        # ----------------------------------------------------
 
         impacted_functions = []
 
@@ -470,10 +417,6 @@ def impact_analysis(state: PR_State):
                 impacted_functions.append(
                     info
                 )
-
-        # ----------------------------------------------------
-        # STEP 8: Return result
-        # ----------------------------------------------------
 
         return {
 
