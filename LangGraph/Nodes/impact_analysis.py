@@ -1,12 +1,14 @@
 import os
 import ast
+
 from collections import defaultdict, deque
+
 from unidiff import PatchSet
 
 from workFlow import PR_State
 
 
-def get_changed_lines(patch):  # THIS PROVIDES THE LINES WHERE CHANGED HAVE BEEN OCCURRED INSIDE THE PATCH
+def get_changed_lines(patch):
 
     changed_lines = []
 
@@ -29,7 +31,7 @@ def get_changed_lines(patch):  # THIS PROVIDES THE LINES WHERE CHANGED HAVE BEEN
     return changed_lines
 
 
-def get_functions(code):   # THIS PROVIDES ALL FUNCTION 
+def get_functions(code):
 
     functions = []
 
@@ -51,7 +53,11 @@ def get_functions(code):   # THIS PROVIDES ALL FUNCTION
 
     return functions
 
-def find_changed_functions(code, changed_lines):  # THIS GIVES ALL THE FUNCTIONS WHICH LIE WITHIN THE RANGE OF THE CHANGED LINES 
+
+def find_changed_functions(
+    code,
+    changed_lines
+):
 
     functions = get_functions(code)
 
@@ -75,7 +81,8 @@ def find_changed_functions(code, changed_lines):  # THIS GIVES ALL THE FUNCTIONS
 
     return changed_functions
 
-def get_called_functions(function_node): # THIS FINDS THE FUNCTIONS CALLED INSIDE A FUNCTION
+
+def get_called_functions(function_node):
 
     called_functions = []
 
@@ -97,10 +104,9 @@ def get_called_functions(function_node): # THIS FINDS THE FUNCTIONS CALLED INSID
             )
 
     return called_functions
-    
 
-def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH FUNCTIONS , WE HAVE TO STORED FUNCTIONS WHICH ARE RELATED TO IT OR CALLED INSIDE IT
-# WE ALSO CREATE A FUNCTIONS DICTONARY WHICH STORES INFO ABOUT A FUNCTION LIKE WHICH FILE IS IT PRESENT AND ALL 
+
+def build_call_graph(worktree):
 
     graph = defaultdict(list)
 
@@ -109,7 +115,8 @@ def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH
     for root, dirs, files in os.walk(worktree):
 
         dirs[:] = [
-            d for d in dirs
+            d
+            for d in dirs
             if d not in [
                 ".git",
                 "__pycache__",
@@ -141,6 +148,7 @@ def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH
                 tree = ast.parse(code)
 
             except Exception:
+
                 continue
 
             relative_path = os.path.relpath(
@@ -164,10 +172,18 @@ def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH
                 )
 
                 functions[function_id] = {
-                    "filename": relative_path,
-                    "function": function_name,
-                    "start": node.lineno,
-                    "end": node.end_lineno
+
+                    "filename":
+                        relative_path,
+
+                    "function":
+                        function_name,
+
+                    "start":
+                        node.lineno,
+
+                    "end":
+                        node.end_lineno
                 }
 
                 called_functions = (
@@ -183,10 +199,10 @@ def build_call_graph(worktree):   # THIS FUNCTION CREATES A GRAPH WHERE FOR EACH
     return graph, functions
 
 
-def resolve_graph(graph, functions):
-    
-    # WE MODIFY THE GRAPH AS PREVIOUSLY WE HAVE FUNCTION NAME,ID -> FUNCTION AND NOW WE MAKE IT FUNCTION NAME , ID -> FUNCTION NAME, ID
-    #THIS HELPS TO KNOW THAT WHICH FILE THE FUNCTIONS BELONG TO 
+def resolve_graph(
+    graph,
+    functions
+):
 
     name_to_functions = defaultdict(list)
 
@@ -205,7 +221,9 @@ def resolve_graph(graph, functions):
         for called_name in graph[caller]:
 
             possible_functions = (
-                name_to_functions[called_name]
+                name_to_functions[
+                    called_name
+                ]
             )
 
             for function in possible_functions:
@@ -217,7 +235,7 @@ def resolve_graph(graph, functions):
     return new_graph
 
 
-def reverse_graph(graph):  # WE REVERSE THE GRAPH AND ESTABLISH THE RELATION CALLED FUNCTIONS INSIDE A FUNCTION -> FUNCTION
+def reverse_graph(graph):
 
     reverse = defaultdict(list)
 
@@ -232,14 +250,16 @@ def reverse_graph(graph):  # WE REVERSE THE GRAPH AND ESTABLISH THE RELATION CAL
     return reverse
 
 
-def bfs(changed_functions, reverse):   # THIS FUNCTION PERFORMS THE BFS WHERE IT FINDS ALL THE FUNCTIONS WHICH MIGHT BE AFFECTED IF THERE IS A CHANGE DONE IN A PARTICULAR FUNCTION 
+def bfs(
+    changed_functions,
+    reverse
+):
 
     queue = deque()
 
     visited = set()
 
     impacted = []
-
 
     for function in changed_functions:
 
@@ -249,13 +269,11 @@ def bfs(changed_functions, reverse):   # THIS FUNCTION PERFORMS THE BFS WHERE IT
 
             queue.append(function)
 
-
     while queue:
 
         current = queue.popleft()
 
         impacted.append(current)
-
 
         for function in reverse[current]:
 
@@ -268,39 +286,50 @@ def bfs(changed_functions, reverse):   # THIS FUNCTION PERFORMS THE BFS WHERE IT
     return impacted
 
 
-def impact_analysis(state: PR_State):
+def impact_analysis(
+    state: PR_State
+):
 
-    simulated_merge = state.get("simulated_merge",{} )
-
+    simulated_merge = state.get(
+        "simulated_merge",
+        {}
+    )
 
     if not simulated_merge:
 
         return {
             "impact_analysis": {
                 "success": False,
-                "error": "Simulated merge not performed."
+                "error":
+                    "Simulated merge not performed."
             }
         }
-        
 
-    if simulated_merge.get("merge_conflict",False):
+    if simulated_merge.get(
+        "merge_conflict",
+        False
+    ):
 
         return {
             "impact_analysis": {
                 "success": False,
                 "skipped": True,
-                "reason": "Merge conflict detected."
+                "reason":
+                    "Merge conflict detected."
             }
         }
 
-    worktree = simulated_merge.get("worktree")
+    worktree = simulated_merge.get(
+        "worktree"
+    )
 
     if not worktree:
 
         return {
             "impact_analysis": {
                 "success": False,
-                "error": "Worktree not found."
+                "error":
+                    "Worktree not found."
             }
         }
 
@@ -318,6 +347,10 @@ def impact_analysis(state: PR_State):
             []
         )
 
+        # =====================================================
+        # FIND CHANGED FUNCTIONS
+        # =====================================================
+
         for file in parsed_data:
 
             filename = file.get(
@@ -329,8 +362,10 @@ def impact_analysis(state: PR_State):
                 ""
             )
 
-            changed_lines = get_changed_lines(
-                patch
+            changed_lines = (
+                get_changed_lines(
+                    patch
+                )
             )
 
             code = ""
@@ -351,28 +386,41 @@ def impact_analysis(state: PR_State):
             if not code:
                 continue
 
-            functions = find_changed_functions(
-                code,
-                changed_lines
+            functions = (
+                find_changed_functions(
+                    code,
+                    changed_lines
+                )
             )
 
             for function in functions:
 
                 changed_functions.append({
 
-                    "filename": filename,
+                    "filename":
+                        filename,
 
-                    "function": function["name"],
+                    "function":
+                        function["name"],
 
-                    "start": function["start"],
+                    "start":
+                        function["start"],
 
-                    "end": function["end"],
+                    "end":
+                        function["end"],
 
-                    "changed_lines": changed_lines
+                    "changed_lines":
+                        changed_lines
                 })
 
-        graph, all_functions = build_call_graph(
-            worktree
+        # =====================================================
+        # BUILD CALL GRAPH
+        # =====================================================
+
+        graph, all_functions = (
+            build_call_graph(
+                worktree
+            )
         )
 
         graph = resolve_graph(
@@ -383,6 +431,10 @@ def impact_analysis(state: PR_State):
         reverse = reverse_graph(
             graph
         )
+
+        # =====================================================
+        # FIND CHANGED FUNCTION IDS
+        # =====================================================
 
         changed_ids = []
 
@@ -399,10 +451,18 @@ def impact_analysis(state: PR_State):
                     function_id
                 )
 
+        # =====================================================
+        # BFS
+        # =====================================================
+
         impacted_ids = bfs(
             changed_ids,
             reverse
         )
+
+        # =====================================================
+        # BUILD IMPACTED FUNCTION DATA
+        # =====================================================
 
         impacted_functions = []
 
@@ -418,11 +478,49 @@ def impact_analysis(state: PR_State):
                     info
                 )
 
+        # =====================================================
+        # NEW:
+        # ADD DIRECT CALLERS TO CHANGED FUNCTIONS
+        # =====================================================
+
+        for changed_function in changed_functions:
+
+            changed_id = (
+                changed_function["filename"],
+                changed_function["function"]
+            )
+
+            direct_callers = []
+
+            for caller_id in reverse.get(
+                changed_id,
+                []
+            ):
+
+                caller_info = all_functions.get(
+                    caller_id
+                )
+
+                if caller_info:
+
+                    direct_callers.append(
+                        caller_info
+                    )
+
+            changed_function[
+                "direct_callers"
+            ] = direct_callers
+
+        # =====================================================
+        # RETURN IMPACT ANALYSIS
+        # =====================================================
+
         return {
 
             "impact_analysis": {
 
-                "success": True,
+                "success":
+                    True,
 
                 "changed_functions":
                     changed_functions,
@@ -435,9 +533,7 @@ def impact_analysis(state: PR_State):
 
                 "impacted_function_count":
                     len(impacted_functions)
-
             }
-
         }
 
     except Exception as e:
@@ -446,10 +542,10 @@ def impact_analysis(state: PR_State):
 
             "impact_analysis": {
 
-                "success": False,
+                "success":
+                    False,
 
-                "error": str(e)
-
+                "error":
+                    str(e)
             }
-
         }
